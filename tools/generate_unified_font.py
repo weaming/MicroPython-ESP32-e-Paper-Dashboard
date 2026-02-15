@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""
+统一字体生成工具
+
+生成包含 ASCII + 中文的 16×16 位图字体文件
+- ASCII: 32-126 (95 个字符)
+- 中文: CJK 统一汉字 (约 20902 个字符)
+- 总计: 约 2.1w 字符，约 780KB
+"""
+
+import struct
+import os
+import sys
+from PIL import Image, ImageDraw, ImageFont
+
+
+FONT_WIDTH = 16
+FONT_HEIGHT = 16
+MAGIC_NUMBER = 0x5546
+
+ASCII_START = 32
+ASCII_END = 126
+ASCII_COUNT = ASCII_END - ASCII_START + 1
+
+
+def get_system_font():
+    """获取选定的中文字体（优先使用 ChillBitmap）"""
+    font_paths = [
+        'fonts/16px/ChillBitmap_16px.ttf',
+        'fonts/12px/fusion-pixel-12px-monospaced-zh_hans.ttf',
+        'fonts/12px/zpix-12px.ttf',
+        'fonts/16px/WenQuanYi.Bitmap.Song.16px.ttf',
+        '/System/Library/Fonts/PingFang.ttc',
+    ]
+    
+    for font_path in font_paths:
+        if os.path.exists(font_path):
+            print(f"Using fonts: {font_path}")
+            try:
+                # 对于原生就是 16px 的点阵字体，使用其原生高
+                size = 16 if '16px' in font_path else 12
+                f = ImageFont.truetype(font_path, size)
+                f.path = font_path # PIL 某些版本可能没有这个属性，手动补一下
+                return f
+            except Exception as e:
+                print(f"Failed to load {font_path}: {e}")
+                continue
+    
+    raise RuntimeError("无法找到合适的中文字体，请手动指定字体路径")
+
+
+def render_char_to_bitmap(char, font):
+    """将字符渲染为 16×16 位图，优化垂直对齐（基准线对齐）"""
+    # 背景为白(1)，画笔为黑(0)
+    img = Image.new('1', (FONT_WIDTH, FONT_HEIGHT), 1)
+    draw = ImageDraw.Draw(img)
+    
+    bbox = draw.textbbox((0, 0), char, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    
+    # 对齐逻辑分两类：
+    if ord(char) < 127:
+        # ASCII: 采用左对齐（留 1px 边距），以便配合双宽度显示 (8px/16px)
+        x = 1 - bbox[0]
+        # 垂直居中渲染（针对 8px 高度的基础字符）
+        if text_height < FONT_HEIGHT // 2:
+            y = FONT_HEIGHT - text_height - 3 - bbox[1]
+        else:
+            y = (FONT_HEIGHT - text_height) // 2 - bbox[1]
+    else:
+        # 中文/全角: 保持水平居中
+        x = (FONT_WIDTH - text_width) // 2
+        y = 0 if FONT_HEIGHT == 16 else (FONT_HEIGHT - text_height) // 2 - bbox[1]
+
+    # 特殊处理 ChillBitmap
+    if "ChillBitmap" in str(getattr(font, 'path', '')):
+        if ord(char) < 127:
+            x = 0 # 像素字体自带边距
+        else:
+            x = (FONT_WIDTH - text_width) // 2
+        y = -bbox[1] # 靠顶对齐
+    
+    draw.text((x, y), char, font=font, fill=0)
+    
+    bitmap = []
+    for row in range(FONT_HEIGHT):
+        row_bytes = []
+        for col_byte in range(FONT_WIDTH // 8):
+            byte_val = 0
+            for bit in range(8):
+                col = col_byte * 8 + bit
+                pixel = img.getpixel((col, row))
+                if pixel == 0:
+                    byte_val |= (1 << (7 - bit))
+            row_bytes.append(byte_val)
+        bitmap.extend(row_bytes)
+    
+    return bytes(bitmap)
+
+
+def get_common_chinese_chars():
+    """获取完整的 CJK 统一汉字范围，确保覆盖所有常用字"""
+    chars_set = set()
+    
+    # Dashboard 必须包含的字
+    dashboard_chars = "墨水屏仪表盘温度湿度电压电量唤醒次数状态运行中"
+    for c in dashboard_chars:
+        chars_set.add(c)
+    
+    # CJK 统一汉字基本区 (U+4E00 - U+9FA5)
+    for code in range(0x4E00, 0x9FA5 + 1):
+        chars_set.add(chr(code))
+        
+    return sorted(list(chars_set))
+
+
+def generate_unified_font(output_path):
+    """生成统一字体文件"""
+    print("正在加载字体...")
+    font = get_system_font()
+    
+    print("正在生成字符列表...")
+    ascii_chars = [chr(i) for i in range(ASCII_START, ASCII_END + 1)]
+    chinese_chars = get_common_chinese_chars()
+    
+    all_chars = sorted(list(set(ascii_chars + chinese_chars)), key=lambda x: ord(x))
+    total_chars = len(all_chars)
+    
+    print(f"总字符数: {total_chars}")
+    
+    with open(output_path, 'wb') as f:
+        print("正在写入文件头...")
+        f.write(struct.pack('<H', MAGIC_NUMBER))
+        f.write(struct.pack('<H', FONT_WIDTH))
+        f.write(struct.pack('<H', FONT_HEIGHT))
+        f.write(struct.pack('<H', total_chars))
+        
+        print("正在生成索引表...")
+        data_start_offset = 8 + total_chars * 6
+        
+        for i, char in enumerate(all_chars):
+            unicode_val = ord(char)
+            offset = data_start_offset + i * 32
+            f.write(struct.pack('<H', unicode_val))
+            f.write(struct.pack('<I', offset))
+        
+        print("正在渲染并写入字符位图...")
+        for i, char in enumerate(all_chars):
+            if (i + 1) % 1000 == 0:
+                print(f"  进度: {i + 1}/{total_chars}")
+            
+            bitmap = render_char_to_bitmap(char, font)
+            f.write(bitmap)
+    
+    file_size = os.path.getsize(output_path)
+    print(f"\n✓ 字体文件生成成功: {output_path}")
+    print(f"  文件大小: {file_size / 1024:.1f} KB")
+
+
+if __name__ == '__main__':
+    output_file = './unified_font.bin'
+    generate_unified_font(output_file)

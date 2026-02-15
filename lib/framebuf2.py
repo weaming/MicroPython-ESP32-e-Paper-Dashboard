@@ -192,27 +192,46 @@ class FrameBuffer:
         """Place text on the screen in variables sizes. Breaks on \n to next line.
         Does not break on line going off screen.
         """
-        # determine our effective width/height, taking rotation into account
+        try:
+            from config import ENABLE_UNIFIED_FONT, UNIFIED_FONT_FILE
+            use_unified = ENABLE_UNIFIED_FONT
+            unified_font_file = UNIFIED_FONT_FILE
+        except ImportError:
+            use_unified = False
+            unified_font_file = "unified_font.bin"
+        
         frame_width = self.width
         frame_height = self.height
         if self.rotation in (1, 3):
             frame_width, frame_height = frame_height, frame_width
 
         for chunk in string.split("\n"):
-            if not self._font or self._font.font_name != font_name:
-                # load the font!
-                self._font = BitmapFont(font_name)
-            width = self._font.font_width
-            height = self._font.font_height
-            for i, char in enumerate(chunk):
-                char_x = x + (i * (width + 1)) * size
+            if use_unified:
+                if not self._font or not isinstance(self._font, UnifiedBitmapFont):
+                    self._font = UnifiedBitmapFont(unified_font_file)
+                width = self._font.font_width
+                height = self._font.font_height
+            else:
+                if not self._font or self._font.font_name != font_name:
+                    self._font = BitmapFont(font_name)
+                width = self._font.font_width
+                height = self._font.font_height
+            
+            cursor_x = x
+            for char in chunk:
                 if (
-                    char_x + (width * size) > 0
-                    and char_x < frame_width
+                    cursor_x + (width * size) > 0
+                    and cursor_x < frame_width
                     and y + (height * size) > 0
                     and y < frame_height
                 ):
-                    self._font.draw_char(char, char_x, y, self, color, size=size)
+                    self._font.draw_char(char, cursor_x, y, self, color, size=size)
+                
+                # 双步进逻辑：ASCII 半角 (8px)，中文 全角 (16px)
+                if use_unified and ord(char) < 128:
+                    cursor_x += (width // 2) * size
+                else:
+                    cursor_x += (width + (0 if use_unified else 1)) * size
             y += height * size
 
     # pylint: enable=too-many-arguments
@@ -380,3 +399,129 @@ class BitmapFont:
     def width(self, text):
         """Return the pixel width of the specified text message."""
         return len(text) * (self.font_width + 1)
+
+
+class UnifiedBitmapFont:
+    """
+    统一字体类，支持 ASCII + 中文的 16×16 位图字体
+    使用按需加载和 LRU 缓存机制
+    """
+    
+    def __init__(self, font_name="unified_font.bin", cache_size=50):
+        self.font_name = font_name
+        self.cache_size = cache_size
+        self.font_width = 16
+        self.font_height = 16
+        self._cache = {}
+        self._cache_order = []
+        self.char_count = 0
+        self.index_offset = 8
+        
+        try:
+            with open(self.font_name, "rb") as f:
+                magic = struct.unpack('<H', f.read(2))[0]
+                if magic != 0x5546:
+                    raise RuntimeError("Invalid unified font file")
+                
+                self.font_width = struct.unpack('<H', f.read(2))[0]
+                self.font_height = struct.unpack('<H', f.read(2))[0]
+                self.char_count = struct.unpack('<H', f.read(2))[0]
+        except OSError:
+            print(f"Could not find font file {font_name}")
+            raise
+    
+    def _find_char_offset(self, char_code):
+        """使用二分查找在文件中查找字符偏移量"""
+        try:
+            with open(self.font_name, "rb") as f:
+                left = 0
+                right = self.char_count - 1
+                
+                while left <= right:
+                    mid = (left + right) // 2
+                    f.seek(self.index_offset + mid * 6)
+                    
+                    unicode_val = struct.unpack('<H', f.read(2))[0]
+                    
+                    if unicode_val == char_code:
+                        offset = struct.unpack('<I', f.read(4))[0]
+                        return offset
+                    elif unicode_val < char_code:
+                        left = mid + 1
+                    else:
+                        right = mid - 1
+                
+                return None
+        except Exception as e:
+            print(f"Error finding char {char_code}: {e}")
+            return None
+    
+    def _load_char(self, char_code):
+        """从文件加载字符位图"""
+        if char_code in self._cache:
+            self._cache_order.remove(char_code)
+            self._cache_order.append(char_code)
+            return self._cache[char_code]
+        
+        offset = self._find_char_offset(char_code)
+        if offset is None:
+            return None
+        
+        try:
+            with open(self.font_name, "rb") as f:
+                f.seek(offset)
+                bitmap = f.read(32)
+            
+            if len(self._cache) >= self.cache_size:
+                oldest = self._cache_order.pop(0)
+                del self._cache[oldest]
+            
+            self._cache[char_code] = bitmap
+            self._cache_order.append(char_code)
+            
+            return bitmap
+        except Exception as e:
+            print(f"Error loading char {char_code}: {e}")
+            return None
+    
+    def draw_char(self, char, x, y, framebuffer, color, size=1):
+        """绘制单个字符"""
+        size = max(size, 1)
+        char_code = ord(char)
+        
+        bitmap = self._load_char(char_code)
+        if bitmap is None:
+            return
+        
+        for row in range(self.font_height):
+            for col_byte in range(self.font_width // 8):
+                byte_idx = row * (self.font_width // 8) + col_byte
+                if byte_idx >= len(bitmap):
+                    continue
+                
+                byte_val = bitmap[byte_idx]
+                
+                for bit in range(8):
+                    if byte_val & (1 << (7 - bit)):
+                        px = x + (col_byte * 8 + bit) * size
+                        py = y + row * size
+                        framebuffer.fill_rect(px, py, size, size, color)
+    
+    def width(self, text):
+        """返回文本的像素宽度（支持 ASCII 半宽和中文全宽）"""
+        total_w = 0
+        for char in text:
+            if ord(char) < 128:
+                total_w += self.font_width // 2
+            else:
+                total_w += self.font_width
+        return total_w
+    
+    def clear_cache(self):
+        """清空缓存"""
+        self._cache.clear()
+        self._cache_order.clear()
+    
+    def deinit(self):
+        """清理资源"""
+        self.clear_cache()
