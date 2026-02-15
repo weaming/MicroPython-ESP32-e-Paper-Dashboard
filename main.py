@@ -27,118 +27,166 @@ def format_time(t):
     """格式化时间为字符串"""
     return f"{t[0]}-{t[1]:02d}-{t[2]:02d} {t[3]:02d}:{t[4]:02d}:{t[5]:02d}"
 
-def draw_dashboard(epd, buf, data):
+def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
     """
-    绘制仪表盘内容
-    注意：延迟导入 FrameBuffer 以节省启动时的内存
+    绘制双屏仪表盘内容：文字用黑色，分割线用黄色
     """
     from lib.framebuf2 import FrameBuffer, MHMSB
+    gc.collect() # 绘制前清理
     
     fb = FrameBuffer(buf, epd.width, epd.height, MHMSB)
     
-    fb.fill(white)
-    
-    # 标题使用大字体
-    fb.text("墨水屏仪表盘", 30, 30, black, size=2)
-    
-    if data.get('time'):
-        time_str = format_time(data['time'])
-        fb.text(time_str, 30, 70, black, size=1)
-    
-    y_pos = 110
-    
-    # 使用统一的行间距和字体大小
-    items = [
-        ("温度", data.get('temp'), "°C", 1),
-        ("湿度", data.get('humi'), "%", 1),
-        ("电池", data.get('battery_voltage'), "V", 2),
-        ("电量", data.get('battery_percentage'), "%", 0),
-        ("唤醒次数", data.get('wake_count'), "", 0),
-    ]
-    
-    for label, value, unit, precision in items:
-        if value is not None:
-            if precision == 0:
-                text = f"{label}: {value}{unit}"
-            elif precision == 1:
-                text = f"{label}: {value:.1f}{unit}"
+    def bold_text(text, x, y, color, size=1):
+        fb.text(text, x, y, color, size=size)
+        fb.text(text, x + 1, y, color, size=size)
+
+    def render_content(x_offset, default_title, content, err, only_lines=False):
+        title = default_title
+        start_idx = 0
+        
+        # 使用更省内存的方式处理每一行
+        if err:
+            if not only_lines:
+                bold_text(f"Error: {err}", x_offset + 20, 90, black, size=1)
+            return
+
+        if not content:
+            if not only_lines:
+                bold_text("No data", x_offset + 20, 90, black, size=1)
+            return
+
+        # 找到第一行标题
+        first_newline = content.find('\n')
+        first_line = content[:first_newline] if first_newline != -1 else content
+        
+        if first_line.startswith('# '):
+            title = first_line[2:].strip()
+            rest = content[first_newline+1:] if first_newline != -1 else ""
+        else:
+            rest = content
+
+        if only_lines:
+            fb.line(x_offset + 20, 65, x_offset + 370, 65, black)
+            fb.line(x_offset + 20, 66, x_offset + 370, 66, black)
+            return
+
+        bold_text(title, x_offset + 20, 30, black, size=2)
+        
+        y = 90
+        # 逐行读取，避免一次性 split 产生大切片
+        last_pos = 0
+        while last_pos < len(rest):
+            next_newline = rest.find('\n', last_pos)
+            if next_newline == -1:
+                line = rest[last_pos:].strip()
+                last_pos = len(rest)
             else:
-                text = f"{label}: {value:.2f}{unit}"
+                line = rest[last_pos:next_newline].strip()
+                last_pos = next_newline + 1
             
-            fb.text(text, 30, y_pos, black, size=1)
-            y_pos += 30
+            if not line:
+                y += 10
+                continue
+            
+            if y > 440: break
+            
+            if line.startswith('#'):
+                h_text = line.lstrip('#').strip()
+                bold_text(h_text, x_offset + 20, y, black, size=2)
+                y += 40
+            else:
+                bold_text(line, x_offset + 20, y, black, size=1)
+                y += 28
+
+    # --- 第一阶段：绘制黑色图层（文字） ---
+    fb.fill(white)
+    render_content(0, "INFO 1", info1_data[0], info1_data[1], only_lines=False)
+    render_content(400, "INFO 2", info2_data[0], info2_data[1], only_lines=False)
     
-    fb.rect(20, 20, 760, 440, black)
+    # 底部状态栏
+    tm = utime.localtime()
+    date_str = f"{tm[0]}-{tm[1]:02d}-{tm[2]:02d} {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}"
+    
+    parts = [date_str]
+    if sensors.get('temp') is not None:
+        parts.append(f"{sensors['temp']:.1f}°C")
+    if sensors.get('humi') is not None:
+        parts.append(f"{sensors['humi']:.1f}%")
+    if sensors.get('bat_v') is not None:
+        parts.append(f"{sensors['bat_v']:.2f}V ({sensors['bat_p']}%)")
+    
+    status_str = " | ".join(parts)
+    bold_text(status_str, 20, 460, black, size=1)
     
     epd.write_black_layer(buf)
-    
+    gc.collect() # 黑色层刷完后清理
+
+    # --- 第二阶段：绘制黄色图层（分割线） ---
     fb.fill(white)
-    fb.text("状态: 运行中", 30, 420, black, size=1)
+    render_content(0, "INFO 1", info1_data[0], info1_data[1], only_lines=True)
+    render_content(400, "INFO 2", info2_data[0], info2_data[1], only_lines=True)
     
     epd.write_yellow_layer(buf, refresh=True)
+    gc.collect()
 
 
 def main():
     try:
-        print(f"Free memory: {gc.mem_free()} bytes")
+        from config import KV_BASE_URL
+        import system.sensor as sensor
+        gc.collect()
         
         scheduler = pwr.WakeScheduler()
-        wake_count = scheduler.get_wake_count()
-        print(f"Wake count: {wake_count}")
         
         if not net.connect_wifi():
-            print("Error: Could not connect to WiFi. Sleeping.")
+            print("WiFi failed. Sleeping.")
             scheduler.schedule_next_wake(60)
             return
         
         net.sync_time()
         
-        data = {
-            'time': utime.localtime(),
-            'wake_count': wake_count
-        }
-        
-        # 初始化传感器
+        # 读取传感器数据
+        sensor_data = {}
         if sensor.init_sensor():
-            temp, humi = sensor.read_sensor()
-            if temp is not None:
-                data['temp'] = temp
-                data['humi'] = humi
-                print(f"Sensor: {temp:.1f}°C, {humi:.1f}%")
+            t, h = sensor.read_sensor()
+            if t is not None:
+                sensor_data['temp'] = t
+                sensor_data['humi'] = h
             sensor.cleanup()
-        else:
-            print("Sensor not available")
-        
-        gc.collect()
         
         voltage = pwr.read_battery_voltage()
         if voltage:
-            data['battery_voltage'] = voltage
-            data['battery_percentage'] = pwr.get_battery_percentage(voltage)
-            print(f"Battery: {voltage:.2f}V ({data['battery_percentage']}%)")
+            sensor_data['bat_v'] = voltage
+            sensor_data['bat_p'] = pwr.get_battery_percentage(voltage)
+        
+        gc.collect()
+        
+        # 获取远程数据
+        info1 = net.fetch_content(KV_BASE_URL + "info1")
+        info2 = net.fetch_content(KV_BASE_URL + "info2")
         
         gc.collect()
         
         # 初始化显示屏
         epd = hw.init_display()
-        
-        # 清除缓冲区
         epd.clear_frame(BUF)
         
-        # 绘制
-        draw_dashboard(epd, BUF, data)
+        # 绘制双屏
+        draw_dashboard(epd, BUF, info1, info2, sensor_data)
         
-        print("Display updated.")
-        
-        # 测试模式：禁用深度睡眠
-        print("Test mode: Deep sleep disabled for debugging")
-        print("Device will stay awake. Press Ctrl-C to stop.")
+        print("Display updated. Scheduling next wake...")
+        from config import DEEP_SLEEP_ENABLED
+        if DEEP_SLEEP_ENABLED:
+            scheduler.schedule_next_wake()
+        else:
+            print("Deep sleep disabled. Waiting 30s...")
+            utime.sleep(30)
+            pwr.restart()
         
     except Exception as e:
         print(f"Critical Error: {e}")
         import sys
         sys.print_exception(e)
-        
         utime.sleep(RESTART_DELAY)
         pwr.restart()
 

@@ -18,7 +18,6 @@ FILES_TO_UPLOAD = [
     'debug.py',
     'font5x8.bin',
     'unified_font.bin',
-    'lib/framebuf2.mpy',  # 上传编译后的文件
 ]
 
 DIRS_TO_UPLOAD = ['lib', 'system']

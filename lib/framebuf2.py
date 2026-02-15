@@ -407,7 +407,7 @@ class UnifiedBitmapFont:
     使用按需加载和 LRU 缓存机制
     """
     
-    def __init__(self, font_name="unified_font.bin", cache_size=50):
+    def __init__(self, font_name="unified_font.bin", cache_size=30):
         self.font_name = font_name
         self.cache_size = cache_size
         self.font_width = 16
@@ -416,42 +416,44 @@ class UnifiedBitmapFont:
         self._cache_order = []
         self.char_count = 0
         self.index_offset = 8
+        self._f = None
         
         try:
-            with open(self.font_name, "rb") as f:
-                magic = struct.unpack('<H', f.read(2))[0]
-                if magic != 0x5546:
-                    raise RuntimeError("Invalid unified font file")
-                
-                self.font_width = struct.unpack('<H', f.read(2))[0]
-                self.font_height = struct.unpack('<H', f.read(2))[0]
-                self.char_count = struct.unpack('<H', f.read(2))[0]
+            self._f = open(self.font_name, "rb")
+            magic = struct.unpack('<H', self._f.read(2))[0]
+            if magic != 0x5546:
+                raise RuntimeError("Invalid unified font file")
+            
+            self.font_width = struct.unpack('<H', self._f.read(2))[0]
+            self.font_height = struct.unpack('<H', self._f.read(2))[0]
+            self.char_count = struct.unpack('<H', self._f.read(2))[0]
         except OSError:
             print(f"Could not find font file {font_name}")
+            if self._f: self._f.close()
             raise
     
     def _find_char_offset(self, char_code):
         """使用二分查找在文件中查找字符偏移量"""
+        if not self._f: return None
         try:
-            with open(self.font_name, "rb") as f:
-                left = 0
-                right = self.char_count - 1
+            left = 0
+            right = self.char_count - 1
+            
+            while left <= right:
+                mid = (left + right) // 2
+                self._f.seek(self.index_offset + mid * 6)
                 
-                while left <= right:
-                    mid = (left + right) // 2
-                    f.seek(self.index_offset + mid * 6)
-                    
-                    unicode_val = struct.unpack('<H', f.read(2))[0]
-                    
-                    if unicode_val == char_code:
-                        offset = struct.unpack('<I', f.read(4))[0]
-                        return offset
-                    elif unicode_val < char_code:
-                        left = mid + 1
-                    else:
-                        right = mid - 1
+                unicode_val = struct.unpack('<H', self._f.read(2))[0]
                 
-                return None
+                if unicode_val == char_code:
+                    offset = struct.unpack('<I', self._f.read(4))[0]
+                    return offset
+                elif unicode_val < char_code:
+                    left = mid + 1
+                else:
+                    right = mid - 1
+            
+            return None
         except Exception as e:
             print(f"Error finding char {char_code}: {e}")
             return None
@@ -468,9 +470,8 @@ class UnifiedBitmapFont:
             return None
         
         try:
-            with open(self.font_name, "rb") as f:
-                f.seek(offset)
-                bitmap = f.read(32)
+            self._f.seek(offset)
+            bitmap = self._f.read(32)
             
             if len(self._cache) >= self.cache_size:
                 oldest = self._cache_order.pop(0)
@@ -525,3 +526,6 @@ class UnifiedBitmapFont:
     def deinit(self):
         """清理资源"""
         self.clear_cache()
+        if self._f:
+            self._f.close()
+            self._f = None

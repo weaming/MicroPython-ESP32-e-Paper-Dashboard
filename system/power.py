@@ -136,7 +136,33 @@ class WakeScheduler:
         data = struct.pack('II', RTC_MAGIC, 0)
         self.state_mgr.save(data)
     
-    def schedule_next_wake(self, interval_seconds):
-        """调度下一次唤醒"""
+    def schedule_next_wake(self, default_interval=300):
+        """
+        调度下一次唤醒，对齐到指定的分钟时刻（如每 5 分钟）
+        """
+        from config import ALIGN_MINUTES, TIMEZONE_OFFSET
         self.increment_wake_count()
-        deep_sleep(interval_seconds)
+        
+        try:
+            # 获取当前时间（已通过 ntp 同步）
+            now = utime.time()
+            # 调节到本地时间进行计算比较直观
+            local_now = now + (TIMEZONE_OFFSET * 3600)
+            tm = utime.localtime(local_now)
+            
+            # 计算距离下一个整 5 分钟还有多少秒
+            current_min = tm[4]
+            current_sec = tm[5]
+            
+            passed_seconds_in_interval = (current_min % ALIGN_MINUTES) * 60 + current_sec
+            sleep_seconds = (ALIGN_MINUTES * 60) - passed_seconds_in_interval
+            
+            # 基础保护：如果剩下时间太短（比如 < 10s），则跳到下一个周期
+            if sleep_seconds < 10:
+                sleep_seconds += ALIGN_MINUTES * 60
+                
+            print(f"Aligning wake: Current {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}, Sleep {sleep_seconds}s")
+            deep_sleep(sleep_seconds)
+        except Exception as e:
+            print(f"Schedule alignment failed: {e}, using default {default_interval}s")
+            deep_sleep(default_interval)

@@ -46,3 +46,28 @@ def sync_time():
     except Exception as e:
         print("Time sync failed:", e)
         return False
+
+def fetch_content(url, timeout=10):
+    """
+    Fetch text content from URL.
+    Returns: (content, error_msg)
+    """
+    import urequests
+    print(f"Fetching: {url}")
+    try:
+        response = urequests.get(url, timeout=timeout)
+        status = response.status_code
+        content = response.text
+        response.close()
+        
+        if status == 200:
+            if not content.strip():
+                return None, "Empty content"
+            return content, None
+        elif status == 404:
+            return None, "Not Found"
+        else:
+            return None, f"HTTP {status}"
+    except Exception as e:
+        print(f"Fetch failed: {e}")
+        return None, str(e)
