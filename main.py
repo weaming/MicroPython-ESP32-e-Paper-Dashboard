@@ -23,6 +23,12 @@ from lib.epaper7in5b import black, white
 
 RESTART_DELAY = 10
 
+# 字间距配置 (0 为不额外增加间距)
+SPACING_TITLE = 4
+SPACING_SUBHEADER = 3
+SPACING_BODY = 0
+SPACING_STATUS = 0
+
 def format_time(t):
     """格式化时间为字符串"""
     return f"{t[0]}-{t[1]:02d}-{t[2]:02d} {t[3]:02d}:{t[4]:02d}:{t[5]:02d}"
@@ -48,12 +54,12 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
         # 使用更省内存的方式处理每一行
         if err:
             if not only_lines:
-                fb.text(f"Error: {err}", x_offset + 20, 90, black, size=1, spacing=1)
+                fb.text(f"Error: {err}", x_offset + 20, 90, black, size=1, spacing=SPACING_BODY)
             return
 
         if not content:
             if not only_lines:
-                fb.text("No data", x_offset + 20, 90, black, size=1, spacing=1)
+                fb.text("No data", x_offset + 20, 90, black, size=1, spacing=SPACING_BODY)
             return
 
         # 找到第一行标题
@@ -71,7 +77,7 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
             fb.line(x_offset + 20, 66, x_offset + 350, 66, black)
             return
 
-        bold_text(title, x_offset + 20, 30, black, size=2, spacing=4)
+        bold_text(title, x_offset + 20, 30, black, size=2, spacing=SPACING_TITLE)
         
         y = 90
         # 逐行读取，避免一次性 split 产生大切片
@@ -93,12 +99,12 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
             
             if line.startswith('#'):
                 h_text = line.lstrip('#').strip()
-                # 子标题加粗，增加间距防止重叠
-                bold_text(h_text, x_offset + 20, y, black, size=1, spacing=3)
+                # 子标题加粗
+                bold_text(h_text, x_offset + 20, y, black, size=1, spacing=SPACING_SUBHEADER)
                 y += 32
             else:
-                # 正文使用常规字体，基础间隔设为 2px
-                fb.text(line, x_offset + 20, y, black, size=1, spacing=2)
+                # 正文使用常规字体
+                fb.text(line, x_offset + 20, y, black, size=1, spacing=SPACING_BODY)
                 y += 28
 
     # --- 第一阶段：绘制黑色图层（文字） ---
@@ -124,8 +130,8 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
         parts.append(f"电量{sensors['bat_p']:.1f}%({sensors.get('bat_raw', 0):.2f}V)")
     
     status_str = " | ".join(parts)
-    # 状态栏使用常规字体，间隔 2px
-    fb.text(status_str, 20, 460, black, size=1, spacing=2)
+    # 状态栏使用常规字体
+    fb.text(status_str, 20, 460, black, size=1, spacing=SPACING_STATUS)
     
     epd.write_black_layer(buf)
     gc.collect() # 黑色层刷完后清理

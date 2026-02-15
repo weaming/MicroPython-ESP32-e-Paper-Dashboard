@@ -228,7 +228,8 @@ class FrameBuffer:
                     self._font.draw_char(char, cursor_x, y, self, color, size=size)
                 
                 # 双步进逻辑：ASCII 半角 (8px)，中文 全角 (16px)
-                if use_unified and ord(char) < 128:
+                # 增加对 ° (176) 的特殊处理，使其按半角步进，紧贴后面的 C
+                if use_unified and (ord(char) < 128 or ord(char) == 176):
                     cursor_x += (width // 2) * size + spacing
                 else:
                     cursor_x += (width + (0 if use_unified else 1)) * size + spacing
