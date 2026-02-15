@@ -55,31 +55,9 @@ def render_char_to_bitmap(char, font):
     img = Image.new('1', (FONT_WIDTH, FONT_HEIGHT), 1)
     draw = ImageDraw.Draw(img)
     
-    bbox = draw.textbbox((0, 0), char, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-    
-    # 对齐逻辑分两类：
-    if ord(char) < 127:
-        # ASCII: 采用左对齐（留 1px 边距），以便配合双宽度显示 (8px/16px)
-        x = 1 - bbox[0]
-        # 垂直居中渲染（针对 8px 高度的基础字符）
-        if text_height < FONT_HEIGHT // 2:
-            y = FONT_HEIGHT - text_height - 3 - bbox[1]
-        else:
-            y = (FONT_HEIGHT - text_height) // 2 - bbox[1]
-    else:
-        # 中文/全角: 保持水平居中
-        x = (FONT_WIDTH - text_width) // 2
-        y = 0 if FONT_HEIGHT == 16 else (FONT_HEIGHT - text_height) // 2 - bbox[1]
-
-    # 特殊处理 ChillBitmap
-    if "ChillBitmap" in str(getattr(font, 'path', '')):
-        if ord(char) < 127:
-            x = 0 # 像素字体自带边距
-        else:
-            x = (FONT_WIDTH - text_width) // 2
-        y = -bbox[1] # 靠顶对齐
+    # 不再对字符上下位置做调整，直接使用原生位置
+    # 这样可以保留符号、上标、下标等字符在字体设计时的原始相对位置
+    x, y = 0, 0
     
     draw.text((x, y), char, font=font, fill=0)
     
