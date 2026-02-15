@@ -19,6 +19,12 @@ PIN_SCK = 18
 PIN_MOSI = 23
 PIN_MISO = 19
 
+# Button Definitions
+PIN_BTN_1 = None # Reset
+PIN_BTN_2 = 34
+PIN_BTN_3 = 35
+PIN_BTN_4 = 39
+
 # Global Buffer
 # Shared buffer to save memory, sized for 800x480 resolution (1-bit depth)
 _buf = None

@@ -51,12 +51,25 @@
 
 | 功能 | GPIO | 说明 |
 |------|------|------|
-| Battery Voltage | 35 | ADC1_CH7 |
+| Battery Voltage | 36 | SENSOR_VP |
 
 **ADC 配置**:
 - 衰减: 11dB (测量范围 0-3.6V)
 - 分辨率: 12-bit (0-4095)
 - 分压比: 1.17 (需根据实际电路调整)
+
+### 硬件按钮
+
+| 按钮 | GPIO | 说明 |
+|------|------|------|
+| Button 1 | EN | 硬件复位引脚 (Reset) |
+| Button 2 | 34 | 输入引脚 (Active Low) |
+| Button 3 | 35 | 输入引脚 (Active Low) |
+| Button 4 | 39 | 输入引脚 (Active Low) |
+
+> [!NOTE]
+> GPIO 34, 35, 39 均为输入专用引脚，没有内部上拉电阻。
+> 之前的文档错误记录 GPIO 35 与电池检测共享，实测电池检测在 GPIO 36。
 
 ## 功能特性
 

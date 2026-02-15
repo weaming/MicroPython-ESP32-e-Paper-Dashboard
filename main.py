@@ -92,8 +92,8 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
             
             if line.startswith('#'):
                 h_text = line.lstrip('#').strip()
-                bold_text(h_text, x_offset + 20, y, black, size=2)
-                y += 40
+                bold_text(h_text, x_offset + 20, y, black, size=1)
+                y += 32
             else:
                 bold_text(line, x_offset + 20, y, black, size=1)
                 y += 28
@@ -109,13 +109,15 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
     
     parts = [date_str]
     if sensors.get('temp') is not None:
-        parts.append(f"{sensors['temp']:.1f}°C")
+        parts.append(f"{sensors['temp']:.1f}度")
     if sensors.get('humi') is not None:
-        parts.append(f"{sensors['humi']:.1f}%")
+        parts.append(f"湿度{int(sensors['humi'])}%")
     if sensors.get('bat_v') is not None:
-        parts.append(f"{sensors['bat_v']:.2f}V ({sensors['bat_p']}%)")
+        # 显示格式：电量xx%(x.xv)
+        parts.append(f"电量{sensors['bat_p']}%({sensors.get('bat_raw', 0):.2f}v)")
     
     status_str = " | ".join(parts)
+    print(f"Status Bar: {status_str}")
     bold_text(status_str, 20, 460, black, size=1)
     
     epd.write_black_layer(buf)
@@ -154,10 +156,13 @@ def main():
                 sensor_data['humi'] = h
             sensor.cleanup()
         
-        voltage = pwr.read_battery_voltage()
-        if voltage:
-            sensor_data['bat_v'] = voltage
-            sensor_data['bat_p'] = pwr.get_battery_percentage(voltage)
+        voltage_info = pwr.read_battery_info()
+        if voltage_info['v_bat'] is not None:
+            sensor_data['bat_v'] = voltage_info['v_bat']
+            sensor_data['bat_raw'] = voltage_info['v_raw']
+            sensor_data['bat_p'] = pwr.get_battery_percentage(voltage_info['v_bat'])
+        
+        print(f"Sensors: {sensor_data}")
         
         gc.collect()
         

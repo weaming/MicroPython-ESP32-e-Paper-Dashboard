@@ -45,16 +45,12 @@ class StateManager:
         self.rtc.memory(b'')
 
 
-def read_battery_voltage(adc_pin=35, attenuation=machine.ADC.ATTN_11DB):
+def read_battery_info(adc_pin=36, attenuation=machine.ADC.ATTN_11DB):
     """
-    读取电池电压
-    
-    Args:
-        adc_pin: ADC 引脚号（默认 GPIO 35）
-        attenuation: ADC 衰减设置（默认 11dB，测量范围 0-3.6V）
+    获取详细的电池信息
     
     Returns:
-        电压值（伏特）
+        dict: {'v_bat': 计算后的电池电压, 'v_raw': ADC 处的原始电压}
     """
     try:
         from machine import ADC, Pin
@@ -63,15 +59,28 @@ def read_battery_voltage(adc_pin=35, attenuation=machine.ADC.ATTN_11DB):
         adc.atten(attenuation)
         adc.width(machine.ADC.WIDTH_12BIT)
         
-        raw_value = adc.read()
-        voltage = (raw_value / 4095.0) * 3.6
+        total = 0
+        samples = 15 # 略微增加采样次数以提高稳定性
+        for _ in range(samples):
+            total += adc.read()
+            utime.sleep_ms(1)
+        raw_value = total / samples
         
-        voltage_with_divider = voltage * 2
+        # 原始 ADC 端电压 (0-3.6V)
+        v_raw = (raw_value / 4095.0) * 3.6
         
-        return voltage_with_divider
+        # 电池端电压（使用 4.0 作为默认分压系数）
+        v_bat = v_raw * 4.0
+        
+        return {'v_bat': v_bat, 'v_raw': v_raw}
     except Exception as e:
-        print(f"Battery voltage read failed: {e}")
-        return None
+        print(f"Battery read failed: {e}")
+        return {'v_bat': None, 'v_raw': None}
+
+
+def read_battery_voltage(adc_pin=36, attenuation=machine.ADC.ATTN_11DB):
+    """保持兼容性的旧接口"""
+    return read_battery_info(adc_pin, attenuation)['v_bat']
 
 
 def get_battery_percentage(voltage):

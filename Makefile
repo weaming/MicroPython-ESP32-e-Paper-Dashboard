@@ -20,3 +20,10 @@ clean:
 
 build-mem-kv-http:
 	cd mem-kv; GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ~/bin-weaming/mem-kv-linux .
+
+test-buttons:
+	mpremote connect /dev/tty.usbserial-10 run test_btns.py
+
+test-adc:
+	mpremote connect /dev/tty.usbserial-10 run test_adc.py
+
