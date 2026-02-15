@@ -13,3 +13,6 @@ debug:
 
 clean:
 	rm -f lib/*.mpy
+
+build-mem-kv-http:
+	cd mem-kv; GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ~/bin-weaming/mem-kv-linux .
