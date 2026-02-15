@@ -35,10 +35,6 @@
   - 采用 RTC Memory 保存任务队列，支持休眠唤醒后的任务调度
 - **传感器**: 
   - 内置室内温湿度传感器 (硬件具备，软件驱动需确认)
-- **当前应用**: Crypto Dashboard (加密货币行情看板)
-  - 数据源: `https://epaper.drink.cafe/all`
-  - 显示内容: BTC, ETH, HOPE, LT, FIL, TON 实时价格
-  - 刷新频率: 默认 5 分钟 (300秒)
 
 ## 4. 软件架构 (Software Architecture)
 - **开发语言**: MicroPython
@@ -47,4 +43,3 @@
   - `device.py`: 硬件抽象层，定义引脚和初始化逻辑
   - `epaper7in5b.py`: 墨水屏驱动程序
   - `sleepscheduler.py`: 休眠调度器，管理任务队列和低功耗模式
-  - `price_tracker.py`: 业务逻辑，负责获取价格并绘制 UI
