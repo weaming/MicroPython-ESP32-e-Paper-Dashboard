@@ -89,6 +89,11 @@ def get_common_chinese_chars():
     # CJK 统一汉字基本区 (U+4E00 - U+9FA5)
     for code in range(0x4E00, 0x9FA5 + 1):
         chars_set.add(chr(code))
+    
+    # 常用符号 (包括摄氏度符号 ° 等)
+    symbols = "°±×÷αβγδεζηθικλμνξοπρστυφχψω"
+    for c in symbols:
+        chars_set.add(c)
         
     return sorted(list(chars_set))
 

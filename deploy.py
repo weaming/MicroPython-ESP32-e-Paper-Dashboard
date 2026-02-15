@@ -412,7 +412,7 @@ except Exception as e:
             status = "✓" if 'OK' in result else f"✗ ({result})"
             print(f"    {mod}: {status}")
 
-    def monitor(self, duration=15):
+    def monitor(self, duration=30):
         """监控设备串口输出"""
         print(f"\n--- Monitoring ({duration}s) ---")
         start = time.time()

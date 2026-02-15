@@ -27,3 +27,8 @@ test-buttons:
 test-adc:
 	mpremote connect /dev/tty.usbserial-10 run test_adc.py
 
+scan-pwr:
+	mpremote connect /dev/tty.usbserial-10 run scan_pwr_pins.py
+
+deploy-font:
+	mpremote connect /dev/tty.usbserial-10 cp unified_font.bin :unified_font.bin

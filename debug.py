@@ -31,7 +31,16 @@ def test_memory():
 def test_battery():
     """测试电池电量"""
     print("\n=== Battery Test ===")
+    from machine import Pin
+    pwr_en = Pin(25, Pin.OUT)
+    pwr_en.value(1) # Enable
+    utime.sleep_ms(50)
+    
     voltage = pwr.read_battery_voltage()
+    
+    pwr_en.value(0) # Disable
+    Pin(25, Pin.IN)
+    
     if voltage:
         percentage = pwr.get_battery_percentage(voltage)
         print(f"Battery voltage: {voltage:.2f}V")

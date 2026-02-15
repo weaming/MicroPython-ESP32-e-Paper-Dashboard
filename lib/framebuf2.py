@@ -188,7 +188,7 @@ class FrameBuffer:
             y += dt_y
 
     # pylint: disable=too-many-arguments
-    def text(self, string, x, y, color, *, font_name="font5x8.bin", size=1):
+    def text(self, string, x, y, color, *, font_name="font5x8.bin", size=1, spacing=0):
         """Place text on the screen in variables sizes. Breaks on \n to next line.
         Does not break on line going off screen.
         """
@@ -229,9 +229,9 @@ class FrameBuffer:
                 
                 # 双步进逻辑：ASCII 半角 (8px)，中文 全角 (16px)
                 if use_unified and ord(char) < 128:
-                    cursor_x += (width // 2) * size
+                    cursor_x += (width // 2) * size + spacing
                 else:
-                    cursor_x += (width + (0 if use_unified else 1)) * size
+                    cursor_x += (width + (0 if use_unified else 1)) * size + spacing
             y += height * size
 
     # pylint: enable=too-many-arguments

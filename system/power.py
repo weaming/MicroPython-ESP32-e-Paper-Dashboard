@@ -9,6 +9,10 @@ import struct
 
 RTC_MAGIC = 0xDEADBEEF
 
+# Battery Measurement Pins
+PIN_BAT_ADC = 36
+PIN_BAT_PWR_EN = 25
+
 
 def deep_sleep(seconds):
     """Enter deep sleep for the specified number of seconds."""
@@ -45,7 +49,7 @@ class StateManager:
         self.rtc.memory(b'')
 
 
-def read_battery_info(adc_pin=36, attenuation=machine.ADC.ATTN_11DB):
+def read_battery_info(adc_pin=PIN_BAT_ADC, pwr_en_pin=PIN_BAT_PWR_EN, attenuation=machine.ADC.ATTN_11DB):
     """
     获取详细的电池信息
     
@@ -55,22 +59,37 @@ def read_battery_info(adc_pin=36, attenuation=machine.ADC.ATTN_11DB):
     try:
         from machine import ADC, Pin
         
-        adc = ADC(Pin(adc_pin))
+        # 1. 开启分压电路电源
+        pwr_en = Pin(pwr_en_pin, Pin.OUT)
+        pwr_en.value(1)
+        
+        # 2. 初始化 ADC (对齐 test_adc.py 逻辑)
+        p = Pin(adc_pin, Pin.IN)
+        adc = ADC(p)
         adc.atten(attenuation)
         adc.width(machine.ADC.WIDTH_12BIT)
         
+        # 3. 预热与采样
+        utime.sleep_ms(20) # 等待电路稳定
+        for _ in range(5): # 预读取
+            adc.read()
+            utime.sleep_ms(5)
+        
         total = 0
-        samples = 15 # 略微增加采样次数以提高稳定性
+        samples = 30
         for _ in range(samples):
             total += adc.read()
-            utime.sleep_ms(1)
+            utime.sleep_ms(2)
         raw_value = total / samples
         
-        # 原始 ADC 端电压 (0-3.6V)
-        v_raw = (raw_value / 4095.0) * 3.6
+        # 4. 关闭分压电路电源以省电
+        pwr_en.value(0)
+        # 设为输入高阻态避免漏电
+        Pin(pwr_en_pin, Pin.IN)
         
-        # 电池端电压（使用 4.0 作为默认分压系数）
-        v_bat = v_raw * 4.0
+        # 5. 计算电压 (原始 ADC 0-3.6V)
+        v_raw = (raw_value / 4095.0) * 3.6
+        v_bat = v_raw * 4.0 # 分压比系数
         
         return {'v_bat': v_bat, 'v_raw': v_raw}
     except Exception as e:
@@ -110,9 +129,9 @@ def get_battery_percentage(voltage):
     elif voltage <= MIN_VOLTAGE:
         return 0
     else:
-        # 线性插值计算电量
-        percentage = int((voltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE) * 100)
-        return max(0, min(100, percentage))
+        # 线性插值计算电量，保留一位小数
+        percentage = (voltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE) * 100
+        return max(0.0, min(100.0, round(percentage, 1)))
 
 
 class WakeScheduler:
