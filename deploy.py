@@ -407,7 +407,7 @@ except Exception as e:
             print(f"  {d}/: {listing}")
 
         print("\n  Import test:")
-        for mod in ['system.power', 'system.network', 'system.hardware', 'lib.epaper7in5b']:
+        for mod in ['system.power', 'system.network', 'system.hardware', 'system.ui', 'lib.epaper7in5b']:
             result = self.exec_raw(f"try:\n import {mod}\n print('OK')\nexcept Exception as e:\n print(e)")
             status = "✓" if 'OK' in result else f"✗ ({result})"
             print(f"    {mod}: {status}")

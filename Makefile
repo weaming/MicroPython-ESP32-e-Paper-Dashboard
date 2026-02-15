@@ -18,17 +18,8 @@ debug:
 clean:
 	rm -f lib/*.mpy system/*.mpy
 
-build-mem-kv-http:
-	cd mem-kv; GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ~/bin-weaming/mem-kv-linux .
-
-test-buttons:
-	mpremote connect /dev/tty.usbserial-10 run test_btns.py
-
-test-adc:
-	mpremote connect /dev/tty.usbserial-10 run test_adc.py
-
-scan-pwr:
-	mpremote connect /dev/tty.usbserial-10 run scan_pwr_pins.py
-
 deploy-font:
 	mpremote connect /dev/tty.usbserial-10 cp unified_font.bin :unified_font.bin
+
+build-mem-kv-http:
+	cd mem-kv; GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ~/bin-weaming/mem-kv-linux .
