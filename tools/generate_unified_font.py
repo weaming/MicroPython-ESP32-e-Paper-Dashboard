@@ -104,7 +104,10 @@ def get_common_chinese_chars():
     
     # 常用符号 (包括摄氏度符号 ° 等)
     symbols = "°±×÷αβγδεζηθικλμνξοπρστυφχψω"
-    for c in symbols:
+    # 中文标点
+    punctuation = "，。、；：？！“”‘’（）【】《》…—·～"
+    
+    for c in symbols + punctuation:
         chars_set.add(c)
         
     return sorted(list(chars_set))
