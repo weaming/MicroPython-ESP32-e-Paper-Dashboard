@@ -107,7 +107,11 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
     render_content(400, "INFO 2", info2_data[0], info2_data[1], only_lines=False)
     
     # 底部状态栏
-    tm = utime.localtime()
+    from config import TIMEZONE_OFFSET
+    # ntptime.settime() 设置的是 UTC 时间，显示时需要加上偏移
+    now_utc = utime.time()
+    now_local = now_utc + (TIMEZONE_OFFSET * 3600)
+    tm = utime.localtime(now_local)
     date_str = f"{tm[0]}-{tm[1]:02d}-{tm[2]:02d} {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}"
     
     parts = [date_str]
