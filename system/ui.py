@@ -4,7 +4,7 @@ from lib.epaper7in5b import black, white
 from lib.framebuf2 import FrameBuffer, MHMSB
 
 # 字间距配置 (0 为不额外增加间距)
-SPACING_TITLE = 4
+SPACING_TITLE = 2
 SPACING_SUBHEADER = 2
 SPACING_BODY = 0
 SPACING_STATUS = 0
@@ -32,17 +32,51 @@ def wrap_text(text, max_width, size=1, spacing=0):
         
         if current_width + cw > max_width:
             # 需要换行
-            # 尝试在当前行找到最后一个空格，以实现英文单词完整换行
+            # 优先找空格（英文单词换行），其次找连字符（-）
             last_space_idx = current_line.rfind(' ')
+            last_hyphen_idx = current_line.rfind('-')
             
-            # 如果能找到空格，且空格后不是空的（避免 text="   " 这种情况死循环）
-            # 并且当前累积的行也不是纯长单词（如果一整行都没空格，就只能硬切了）
-            if last_space_idx != -1:
-                # 将空格前的内容作为一行
+            valid_break = False
+            
+            # 检测是否为列表项开头 (- 或 1. )，如果是，则保护其不被切断
+            safe_len = 0
+            # 简单检测：- 或 * 开头
+            if current_line.startswith('- ') or current_line.startswith('* '):
+                safe_len = 2
+            else:
+                # 检测数字列表 1. 
+                # 寻找第一个空格
+                first_space = current_line.find(' ')
+                if first_space > 1 and current_line[first_space-1] == '.' and \
+                   current_line[:first_space-1].isdigit():
+                     safe_len = first_space + 1
+
+            # 比较哪个分割点更靠后（更优填充），且不在保护范围内
+            # 保护范围：safe_len (例如 "- " 长度为 2，索引 0,1。space 在 1。我们不希望在 index < safe_len 处断开)
+            # 但实际上，如果 content="- Item", last_space_idx=1. 
+            # 我们希望 "Item" 换行吗？用户说 "如果是行首的 - ... 不要在这里换行"
+            # 意思是不要把 "- " 留在上一行，而 "Item" 放到下一行？
+            # 也就是：禁止在 safe_len 之前的 space/hyphen 处断行。
+            
+            # 修正逻辑：必须 > safe_len 才能断行？
+            # 如果 "- Item" 太长，不在这里断，就会导致 "- Item" 整体作为 current_line (硬切)
+            # 这样 "- " 和 "I" 还是在一起的。
+            
+            can_break_space = (last_space_idx != -1 and last_space_idx >= safe_len)
+            can_break_hyphen = (last_hyphen_idx != -1 and last_hyphen_idx >= safe_len)
+            
+            if can_break_space and (not can_break_hyphen or last_space_idx > last_hyphen_idx):
+                # 在空格处换行（空格丢弃）
                 prefix = current_line[:last_space_idx]
-                # 空格后的内容（半截单词）+ 当前字符 放到下一行
                 suffix = current_line[last_space_idx+1:] + char
-                
+                valid_break = True
+            elif can_break_hyphen:
+                # 在连字符后换行（连字符保留在上一行末尾）
+                prefix = current_line[:last_hyphen_idx+1]
+                suffix = current_line[last_hyphen_idx+1:] + char
+                valid_break = True
+            
+            if valid_break:
                 lines.append(prefix)
                 current_line = suffix
                 
@@ -51,7 +85,7 @@ def wrap_text(text, max_width, size=1, spacing=0):
                 for c in current_line:
                     current_width += get_char_width(c, size, spacing)
             else:
-                # 没空格（如长中文或超长英文单词），只能硬切
+                # 没合适的断点，只能硬切
                 lines.append(current_line)
                 current_line = char
                 current_width = cw
