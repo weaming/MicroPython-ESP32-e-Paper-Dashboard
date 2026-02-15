@@ -60,6 +60,8 @@ WHITE = const(0xFF)
 black = yellow = 0
 white = 1
 
+DEBUG = False
+
 
 class EPD:
     def __init__(self, spi, cs, dc, rst, busy, yellow_bounds=(64, 192)):
@@ -80,10 +82,6 @@ class EPD:
     def _command(self, command, data=None):
         self.dc(0)
         self.cs(0)
-        if data:
-            print('cmd', command, data)
-        else:
-            print('cmd', command)
         self.spi.write(bytearray([command]))
         self.cs(1)
         if data is not None:
@@ -122,7 +120,6 @@ class EPD:
         ms = 100
         ms_max = 3000
         while self.busy.value() == BUSY:
-            print('wait for idle')
             if ms < ms_max:
                 ms *= 2
             sleep_ms(min(ms, ms_max))
@@ -200,12 +197,12 @@ class EPD:
 
     def clear_black_layer(self):
         self._command(DATA_START_TRANSMISSION_1)
-        for _ in range(0, self.width * self.height / 8):
+        for _ in range(0, self.width * self.height // 8):
             self._data(WHITE)
 
     def clear_yellow_layer(self):
         self._command(DATA_START_TRANSMISSION_2)
-        for _ in range(0, self.width * self.height / 8):
+        for _ in range(0, self.width * self.height // 8):
             self._data(WHITE)
 
     def display_frame(self, buf_black, buf_yellow=None):

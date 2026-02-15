@@ -43,3 +43,100 @@ class StateManager:
     def clear(self):
         """Clear RTC memory."""
         self.rtc.memory(b'')
+
+
+def read_battery_voltage(adc_pin=35, attenuation=machine.ADC.ATTN_11DB):
+    """
+    读取电池电压
+    
+    Args:
+        adc_pin: ADC 引脚号（默认 GPIO 35）
+        attenuation: ADC 衰减设置（默认 11dB，测量范围 0-3.6V）
+    
+    Returns:
+        电压值（伏特）
+    """
+    try:
+        from machine import ADC, Pin
+        
+        adc = ADC(Pin(adc_pin))
+        adc.atten(attenuation)
+        adc.width(machine.ADC.WIDTH_12BIT)
+        
+        raw_value = adc.read()
+        voltage = (raw_value / 4095.0) * 3.6
+        
+        voltage_with_divider = voltage * 2
+        
+        return voltage_with_divider
+    except Exception as e:
+        print(f"Battery voltage read failed: {e}")
+        return None
+
+
+def get_battery_percentage(voltage):
+    """
+    根据电压计算电池电量百分比
+    
+    电池配置：2S 锂电池（两节串联）
+    - 充满：8.4V (4.2V × 2)
+    - 标称：7.4V (3.7V × 2)
+    - 放空：6.0V (3.0V × 2)
+    
+    Args:
+        voltage: 电池电压（伏特）
+    
+    Returns:
+        电量百分比 (0-100)
+    """
+    if voltage is None:
+        return None
+    
+    # 2S 锂电池电压范围
+    MIN_VOLTAGE = 6.0   # 放空电压
+    MAX_VOLTAGE = 8.4   # 充满电压
+    
+    if voltage >= MAX_VOLTAGE:
+        return 100
+    elif voltage <= MIN_VOLTAGE:
+        return 0
+    else:
+        # 线性插值计算电量
+        percentage = int((voltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE) * 100)
+        return max(0, min(100, percentage))
+
+
+class WakeScheduler:
+    """深度睡眠唤醒调度器"""
+    
+    def __init__(self):
+        self.state_mgr = StateManager()
+    
+    def get_wake_count(self):
+        """获取唤醒次数"""
+        try:
+            data = self.state_mgr.load()
+            if len(data) >= 8:
+                magic, count = struct.unpack('II', data[:8])
+                if magic == RTC_MAGIC:
+                    return count
+        except:
+            pass
+        return 0
+    
+    def increment_wake_count(self):
+        """增加唤醒次数"""
+        count = self.get_wake_count() + 1
+        data = struct.pack('II', RTC_MAGIC, count)
+        self.state_mgr.save(data)
+        return count
+    
+    def reset_wake_count(self):
+        """重置唤醒次数"""
+        data = struct.pack('II', RTC_MAGIC, 0)
+        self.state_mgr.save(data)
+    
+    def schedule_next_wake(self, interval_seconds):
+        """调度下一次唤醒"""
+        self.increment_wake_count()
+        deep_sleep(interval_seconds)

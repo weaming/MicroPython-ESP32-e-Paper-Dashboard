@@ -6,10 +6,10 @@ import gc
 # CS: Chip Select (GPIO 5)
 # DC: Data/Command (GPIO 19)
 # RST: Reset (GPIO 16)
-# BUSY: Busy status (GPIO 17)
+# BUSY: Busy status (GPIO 17, LOW=busy)
 # SCK: Serial Clock (GPIO 18)
 # MOSI: Master Out Slave In (GPIO 23)
-# MISO: Master In Slave Out (GPIO 19)
+# MISO: GPIO 12 (墨水屏只写，不使用 MISO，但 SPI 构造函数需要)
 
 PIN_CS = 5
 PIN_DC = 19
@@ -27,32 +27,38 @@ _buf = None
 def get_buffer():
     global _buf
     if _buf is None:
-        # Allocate buffer if not exists
+        # 分配缓冲区前先释放内存
+        gc.collect()
+        free_before = gc.mem_free()
+        print(f"Free memory before buffer allocation: {free_before} bytes")
+        
         # 800 * 480 / 8 = 48000 bytes
+        buffer_size = epaper7in5b.EPD_WIDTH * epaper7in5b.EPD_HEIGHT // 8
+        
         try:
-            _buf = bytearray(epaper7in5b.EPD_WIDTH * epaper7in5b.EPD_HEIGHT // 8)
-        except MemoryError:
-            gc.collect()
-            _buf = bytearray(epaper7in5b.EPD_WIDTH * epaper7in5b.EPD_HEIGHT // 8)
+            _buf = bytearray(buffer_size)
+            print(f"Buffer allocated: {buffer_size} bytes")
+        except MemoryError as e:
+            print(f"Failed to allocate buffer: {buffer_size} bytes")
+            print(f"Free memory: {gc.mem_free()} bytes")
+            raise
     return _buf
 
 
 def init_display():
     """Initialize and return the EPD instance."""
-    cs = Pin(PIN_CS)
-    dc = Pin(PIN_DC)
-    rst = Pin(PIN_RST)
-    busy = Pin(PIN_BUSY)
-    
-    # SPI Configuration
-    # Baudrate: 20MHz
-    # MISO is not used by E-Paper (Write Enabled only), but SPI requires a pin. 
-    # specific 'None' or unused pin. mapping MISO to 12 (MTDI, usually safe if not strapped) or similar unwanted.
-    # actually, just removing it or setting to a non-conflicting pin. 
-    # Let's map MISO to 12 to avoid 19 (DC)
-    spi = SPI(2, baudrate=20000000, polarity=0, phase=0, 
-              sck=Pin(PIN_SCK), miso=Pin(12), mosi=Pin(PIN_MOSI))
-    
-    epd = epaper7in5b.EPD(spi, cs, dc, rst, busy)
-    epd.init()
-    return epd
+    try:
+        cs = Pin(PIN_CS)
+        dc = Pin(PIN_DC)
+        rst = Pin(PIN_RST)
+        busy = Pin(PIN_BUSY)
+        
+        spi = SPI(2, baudrate=20000000, polarity=0, phase=0, 
+                  sck=Pin(PIN_SCK), miso=Pin(12), mosi=Pin(PIN_MOSI))
+        
+        epd = epaper7in5b.EPD(spi, cs, dc, rst, busy)
+        epd.init()
+        return epd
+    except Exception as e:
+        print(f"Display initialization failed: {e}")
+        raise
