@@ -9,17 +9,20 @@ build:
 		mpy-cross "$$file"; \
 	done
 
-gen-font-file:
+gen-font:
 	python3 tools/generate_unified_font.py
 
 debug:
-	mpremote connect /dev/tty.usbserial-10 run debug.py
+	mpremote connect /dev/tty.usbserial-10:115200 run debug.py
 
 clean:
 	rm -f lib/*.mpy system/*.mpy
 
-deploy-font:
-	mpremote connect /dev/tty.usbserial-10 cp unified_font.bin :unified_font.bin
-
 build-mem-kv-http:
 	cd mem-kv; GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ~/bin-weaming/mem-kv-linux .
+
+logs:
+	mpremote connect /dev/tty.usbserial-10:115200 repl
+
+tail:
+	python3 -c "import serial, sys, time; s=serial.Serial('/dev/tty.usbserial-10', 115200, timeout=0); print('--- Tailing logs (Ctrl+C to stop) ---'); exec('while True:\n try:\n  data=s.read(s.in_waiting or 1)\n  if data: sys.stdout.write(data.decode(\'utf-8\', \'replace\')); sys.stdout.flush()\n  else: time.sleep(0.01)\n except KeyboardInterrupt: break')"

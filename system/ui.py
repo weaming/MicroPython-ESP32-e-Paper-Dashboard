@@ -5,7 +5,7 @@ from lib.framebuf2 import FrameBuffer, MHMSB
 
 # 字间距配置 (0 为不额外增加间距)
 SPACING_TITLE = 4
-SPACING_SUBHEADER = 3
+SPACING_SUBHEADER = 2
 SPACING_BODY = 0
 SPACING_STATUS = 0
 

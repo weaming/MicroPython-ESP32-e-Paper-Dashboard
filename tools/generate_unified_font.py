@@ -55,9 +55,19 @@ def render_char_to_bitmap(char, font):
     img = Image.new('1', (FONT_WIDTH, FONT_HEIGHT), 1)
     draw = ImageDraw.Draw(img)
     
-    # 不再对字符上下位置做调整，直接使用原生位置
-    # 这样可以保留符号、上标、下标等字符在字体设计时的原始相对位置
-    x, y = 0, 0
+    # 垂直对齐策略：
+    # 1. ASCII 字符 (如 'j', 'g', 'p', 'y')：通常这些字有下沉部 (descender)，
+    #    但上面有大量留白。为了不切掉尾巴，我们需要将其向上平移 2~3 像素。
+    # 2. 中文字符：通常是 16x16 满格的。如果向上平移太多，顶部会被切掉。
+    #    所以中文字符保持不动 (y=0) 或仅微调。
+    
+    if ord(char) < 128:
+        # ASCII: 向上平移 1 像素以容纳下沉部 (折衷方案：保留大部分尾巴，且与中文对齐更好)
+        x, y = 0, -1
+    else:
+        # 中文/全角: 保持原位（或者 -1 如果字库本身偏下）
+        # 经观察 ChillBitmap 16px 中文垂直居中较好，无需偏移，否则削头
+        x, y = 0, 0
     
     draw.text((x, y), char, font=font, fill=0)
     
@@ -75,6 +85,8 @@ def render_char_to_bitmap(char, font):
         bitmap.extend(row_bytes)
     
     return bytes(bitmap)
+
+
 
 
 def get_common_chinese_chars():
