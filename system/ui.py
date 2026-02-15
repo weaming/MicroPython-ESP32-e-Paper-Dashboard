@@ -9,6 +9,61 @@ SPACING_SUBHEADER = 2
 SPACING_BODY = 0
 SPACING_STATUS = 0
 
+def get_char_width(char, size=1, spacing=0):
+    """获取单个字符的显示宽度 (与 framebuf2 逻辑保持一致)"""
+    # ASCII(及一度)使用半宽 (8px), 其他使用全宽 (16px)
+    # 假设基础字体宽度为 16
+    if ord(char) < 128 or ord(char) == 176:
+        return (8 * size) + spacing
+    else:
+        return (16 * size) + spacing
+
+def wrap_text(text, max_width, size=1, spacing=0):
+    """
+    将文本按指定宽度自动换行
+    支持英文按单词换行 (Word Wrap)
+    """
+    lines = []
+    current_line = ""
+    current_width = 0
+    
+    for char in text:
+        cw = get_char_width(char, size, spacing)
+        
+        if current_width + cw > max_width:
+            # 需要换行
+            # 尝试在当前行找到最后一个空格，以实现英文单词完整换行
+            last_space_idx = current_line.rfind(' ')
+            
+            # 如果能找到空格，且空格后不是空的（避免 text="   " 这种情况死循环）
+            # 并且当前累积的行也不是纯长单词（如果一整行都没空格，就只能硬切了）
+            if last_space_idx != -1:
+                # 将空格前的内容作为一行
+                prefix = current_line[:last_space_idx]
+                # 空格后的内容（半截单词）+ 当前字符 放到下一行
+                suffix = current_line[last_space_idx+1:] + char
+                
+                lines.append(prefix)
+                current_line = suffix
+                
+                # 重新计算新一行的宽度
+                current_width = 0
+                for c in current_line:
+                    current_width += get_char_width(c, size, spacing)
+            else:
+                # 没空格（如长中文或超长英文单词），只能硬切
+                lines.append(current_line)
+                current_line = char
+                current_width = cw
+        else:
+            current_line += char
+            current_width += cw
+            
+    if current_line:
+        lines.append(current_line)
+    return lines
+
+
 
 def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
     """
@@ -25,6 +80,7 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
 
     def render_content(x_offset, default_title, content, err, only_lines=False):
         title = default_title
+        MAX_WIDTH = 330 # 内容最大宽度 (350 - 20)
         
         # 使用更省内存的方式处理每一行
         if err:
@@ -52,8 +108,13 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
             fb.line(x_offset + 20, 66, x_offset + 350, 66, black)
             return
 
-        bold_text(title, x_offset + 20, 30, black, size=2, spacing=SPACING_TITLE)
-        
+        # 绘制主标题 (支持换行，虽然通常不应换行)
+        title_lines = wrap_text(title, MAX_WIDTH, size=2, spacing=SPACING_TITLE)
+        ty = 30
+        for t_line in title_lines:
+            bold_text(t_line, x_offset + 20, ty, black, size=2, spacing=SPACING_TITLE)
+            ty += 32 # 大标题行高
+            
         y = 90
         # 逐行读取，避免一次性 split 产生大切片
         last_pos = 0
@@ -74,13 +135,19 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
             
             if line.startswith('#'):
                 h_text = line.lstrip('#').strip()
-                # 子标题加粗，增加间距防止重叠
-                bold_text(h_text, x_offset + 20, y, black, size=1, spacing=SPACING_SUBHEADER)
-                y += 32
+                # 子标题加粗，增加间距防止重叠，支持自动换行
+                h_lines = wrap_text(h_text, MAX_WIDTH, size=1, spacing=SPACING_SUBHEADER)
+                for h_line in h_lines:
+                    if y > 440: break
+                    bold_text(h_line, x_offset + 20, y, black, size=1, spacing=SPACING_SUBHEADER)
+                    y += 32
             else:
-                # 正文使用常规字体
-                fb.text(line, x_offset + 20, y, black, size=1, spacing=SPACING_BODY)
-                y += 28
+                # 正文使用常规字体，支持自动换行
+                b_lines = wrap_text(line, MAX_WIDTH, size=1, spacing=SPACING_BODY)
+                for b_line in b_lines:
+                    if y > 440: break
+                    fb.text(b_line, x_offset + 20, y, black, size=1, spacing=SPACING_BODY)
+                    y += 28
 
     # --- 第一阶段：绘制黑色图层（文字） ---
     fb.fill(white)

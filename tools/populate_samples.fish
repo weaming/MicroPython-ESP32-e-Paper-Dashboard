@@ -27,9 +27,8 @@ set INFO2 "# 个人看板
 - 知识库维护: 进行中
 
 ## 每日格言
-\"Stay hungry, stay foolish.\"
-\"The best way to predict the 
-future is to create it.\"
+
+Stay hungry, stay foolish.  The best way to predict the future is to create it.
 
 ## 加密货币
 BTC: \$51,234.56 (-1.2%)
