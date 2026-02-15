@@ -114,7 +114,7 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
 
     def render_content(x_offset, default_title, content, err, only_lines=False):
         title = default_title
-        MAX_WIDTH = 330 # 内容最大宽度 (350 - 20)
+        MAX_WIDTH = 360 # 优化：利用更多宽度 (380 - 20)
         
         # 使用更省内存的方式处理每一行
         if err:
@@ -138,8 +138,8 @@ def draw_dashboard(epd, buf, info1_data, info2_data, sensors):
             rest = content
 
         if only_lines:
-            fb.line(x_offset + 20, 65, x_offset + 350, 65, black)
-            fb.line(x_offset + 20, 66, x_offset + 350, 66, black)
+            fb.line(x_offset + 20, 65, x_offset + 380, 65, black)
+            fb.line(x_offset + 20, 66, x_offset + 380, 66, black)
             return
 
         # 绘制主标题 (支持换行，虽然通常不应换行)
