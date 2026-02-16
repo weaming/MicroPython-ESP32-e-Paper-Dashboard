@@ -20,78 +20,131 @@ def get_char_width(char, size=1, spacing=0):
 
 def wrap_text(text, max_width, size=1, spacing=0):
     """
-    将文本按指定宽度自动换行
-    支持英文按单词换行 (Word Wrap)
+    高性能 O(n) 换行算法
+    支持：1. 避头尾 2. 紧凑换行 3. 中英文混合 4. 英文连字符 5. 列表项保护 6. 全角空格
     """
+    # 避头尾配置
+    HEAD_FORBIDDEN = "，。、；：？！）》】'\"”’〉》」』】〕〗"
+    TAIL_FORBIDDEN = "《（【“‘〈《「『【〔〖"
+    
     lines = []
     current_line = ""
     current_width = 0
     
-    for char in text:
+    # 记录最后一次“好”的断点位置 (以便回溯)
+    # (index_in_text, current_line_length, current_width_at_break, break_type)
+    last_soft_break = None 
+    
+    i = 0
+    while i < len(text):
+        char = text[i]
         cw = get_char_width(char, size, spacing)
         
-        if current_width + cw > max_width:
-            # 需要换行
-            # 优先找空格（英文单词换行），其次找连字符（-）
-            last_space_idx = current_line.rfind(' ')
-            last_hyphen_idx = current_line.rfind('-')
-            
-            valid_break = False
-            
-            # 检测是否为列表项开头 (- 或 1. )，如果是，则保护其不被切断
-            safe_len = 0
-            # 简单检测：- 或 * 开头
-            if current_line.startswith('- ') or current_line.startswith('* '):
-                safe_len = 2
-            else:
-                # 检测数字列表 1. 
-                # 寻找第一个空格
-                first_space = current_line.find(' ')
-                if first_space > 1 and current_line[first_space-1] == '.' and \
-                   current_line[:first_space-1].isdigit():
-                     safe_len = first_space + 1
+        # 记录潜在断点：空格、全角空格、连字符、或是中英文边界
+        is_space = (char == ' ' or char == '\u3000')
+        is_hyphen = (char == '-')
+        
+        # 边界检测：当前是英文/数字，且前一个是非英文/数字
+        is_boundary = False
+        if i > 0:
+            prev_char = text[i-1]
+            curr_is_en = (ord(char) < 128 and char.isalpha())
+            prev_is_en = (ord(prev_char) < 128 and prev_char.isalpha())
+            if curr_is_en != prev_is_en:
+                is_boundary = True
 
-            # 比较哪个分割点更靠后（更优填充），且不在保护范围内
-            # 保护范围：safe_len (例如 "- " 长度为 2，索引 0,1。space 在 1。我们不希望在 index < safe_len 处断开)
-            # 但实际上，如果 content="- Item", last_space_idx=1. 
-            # 我们希望 "Item" 换行吗？用户说 "如果是行首的 - ... 不要在这里换行"
-            # 意思是不要把 "- " 留在上一行，而 "Item" 放到下一行？
-            # 也就是：禁止在 safe_len 之前的 space/hyphen 处断行。
+        # 如果当前是一个合法的断开点
+        if is_space or is_hyphen or is_boundary:
+            # 记录断点信息。如果是空格，断点在空格前；如果是连字符，断点在连字符后。
+            # 这里简化记录：记录当前已累积的长度和宽度
+            # marker 保护：如果处于列表标记内，不记录断点
+            safe_to_break = True
+            if current_line.startswith('- ') or current_line.startswith('* '):
+                if len(current_line) < 2: safe_to_break = False
+            elif i > 0:
+                # 简单数字列表检测 (1. )
+                first_space = current_line.find(' ')
+                if first_space != -1 and first_space > 0 and current_line[first_space-1] == '.' and current_line[:first_space-1].isdigit():
+                    if len(current_line) <= first_space: safe_to_break = False
+
+            if safe_to_break:
+                last_soft_break = (i, len(current_line), current_width, char)
+
+        if current_width + cw > max_width:
+            # 需要换行！
+            break_idx = -1
             
-            # 修正逻辑：必须 > safe_len 才能断行？
-            # 如果 "- Item" 太长，不在这里断，就会导致 "- Item" 整体作为 current_line (硬切)
-            # 这样 "- " 和 "I" 还是在一起的。
+            # --- 方案 A: 尝试之前的软断点 ---
+            if last_soft_break:
+                b_text_idx, b_line_len, b_width, b_char = last_soft_break
+                # 断点必须不在行首才有意义
+                if b_line_len > 0 and max_width - b_width <= 32:
+                    # 检查 Kinsoku：如果断点后的第一个字是避头标点
+                    next_char_idx = b_text_idx + 1 if (b_char == ' ' or b_char == '\u3000') else b_text_idx
+                    if next_char_idx < len(text) and text[next_char_idx] in HEAD_FORBIDDEN and b_line_len > 1:
+                        # 触发避头：再往前挪一个字
+                        # 注意：这里我们简单地放弃该软断点，走方案 B (硬切+避头处理)
+                        pass 
+                    else:
+                        if b_char == ' ' or b_char == '\u3000':
+                            prefix = current_line[:b_line_len]
+                            lines.append(prefix)
+                            current_line = ""
+                            current_width = 0
+                            i = b_text_idx + 1 
+                            last_soft_break = None
+                            continue
+                        else:
+                            prefix = current_line[:b_line_len]
+                            lines.append(prefix)
+                            current_line = ""
+                            current_width = 0
+                            i = b_text_idx
+                            last_soft_break = None
+                            continue
             
-            can_break_space = (last_space_idx != -1 and last_space_idx >= safe_len)
-            can_break_hyphen = (last_hyphen_idx != -1 and last_hyphen_idx >= safe_len)
+            # --- 方案 B: 避头尾与硬切 ---
+            # 这里的逻辑是：如果当前字 char 是“避头”标点，则把上一行的最后一个字挪到下一行。
+            # 如果上一行末尾是“避尾”标点，则把该标点也挪到下一行。
+            move_to_next = char 
+            temp_line = current_line
             
-            if can_break_space and (not can_break_hyphen or last_space_idx > last_hyphen_idx):
-                # 在空格处换行（空格丢弃）
-                prefix = current_line[:last_space_idx]
-                suffix = current_line[last_space_idx+1:] + char
-                valid_break = True
-            elif can_break_hyphen:
-                # 在连字符后换行（连字符保留在上一行末尾）
-                prefix = current_line[:last_hyphen_idx+1]
-                suffix = current_line[last_hyphen_idx+1:] + char
-                valid_break = True
+            # 避头处理
+            if char in HEAD_FORBIDDEN and len(temp_line) > 0:
+                move_to_next = temp_line[-1] + move_to_next
+                temp_line = temp_line[:-1]
             
-            if valid_break:
-                lines.append(prefix)
-                current_line = suffix
+            # 避尾处理 (检查 temp_line 末尾)
+            if len(temp_line) > 0 and temp_line[-1] in TAIL_FORBIDDEN:
+                move_to_next = temp_line[-1] + move_to_next
+                temp_line = temp_line[:-1]
+            
+            # --- 方案 C: 英文连字符补全 ---
+            # 只有在没有进行避头尾挪动，且是在英文单词中间切断时才加连字符
+            if len(move_to_next) == 1 and temp_line and \
+               ord(move_to_next) < 128 and move_to_next.isalpha() and \
+               ord(temp_line[-1]) < 128 and temp_line[-1].isalpha():
                 
-                # 重新计算新一行的宽度
-                current_width = 0
-                for c in current_line:
-                    current_width += get_char_width(c, size, spacing)
-            else:
-                # 没合适的断点，只能硬切
-                lines.append(current_line)
-                current_line = char
-                current_width = cw
+                hyphen_w = get_char_width('-', size, spacing)
+                if current_width + hyphen_w <= max_width:
+                    temp_line += '-'
+                elif len(temp_line) > 1:
+                    # 挪一个字母走，补连字符
+                    move_to_next = temp_line[-1] + move_to_next
+                    temp_line = temp_line[:-1] + '-'
+            
+            lines.append(temp_line)
+            current_line = move_to_next
+            current_width = 0
+            for c in current_line:
+                current_width += get_char_width(c, size, spacing)
+            
+            i += 1 # 消费了当前的 char
+            last_soft_break = None
         else:
             current_line += char
             current_width += cw
+            i += 1
             
     if current_line:
         lines.append(current_line)
