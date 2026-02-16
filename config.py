@@ -4,7 +4,7 @@ WIFI_PASSWORD = 'hello123'
 
 # KV Service Configuration
 KV_BASE_URL = 'https://mem-kv.bitsflow.org/dashboard/'
-ALIGN_MINUTES = 5
+ALIGN_MINUTES = 60
 
 # Time Configuration
 TIMEZONE_OFFSET = 8  # Beijing Time (UTC+8)
